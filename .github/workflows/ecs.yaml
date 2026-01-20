@@ -1,40 +1,43 @@
-name: Deploy to AWS ECS
+name: My_ECS_Deployment
 
 on:
   push:
     branches:
-      - master  # Run this workflow on every push to the main branch
+      - master
 
 jobs:
-  deploy:
+  build-and-deploy:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout code
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
 
-      - name: Log in to Amazon ECR
+      - name: Set up AWS credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ap-south-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v1
 
-      - name: Build and tag Docker image
-        env:
-          REPO_URI: 656982906157.dkr.ecr.ap-south-1.amazonaws.com/myrepo
-        run: |
-          docker build -t $REPO_URI:latest .
-          docker tag $REPO_URI:latest $REPO_URI:${{ github.sha }}
-
-      - name: Push to Amazon ECR
-        env:
-          REPO_URI: 656982906157.dkr.ecr.ap-south-1.amazonaws.com/myrepo
-        run: |
-          docker push $REPO_URI:latest
-          docker push $REPO_URI:${{ github.sha }}
-
-      - name: Deploy to Amazon ECS
+      - name: Build and push Docker image
         env:
           AWS_REGION: ap-south-1
-          CLUSTER: Cluster
-          SERVICE: myservice
-          IMAGE_URI: 656982906157.dkr.ecr.ap-south-1.amazonaws.com/myrepo:${{ github.sha }}
+          ECR_REPO_URI: 656982906157.dkr.ecr.ap-south-1.amazonaws.com/myrepo
+          IMAGE_TAG: latest
         run: |
-          aws ecs update-service --cluster $CLUSTER --service $SERVICE --force-new-deployment --region $AWS_REGION
+          docker build -t $ECR_REPO_URI:$IMAGE_TAG .
+          docker push $ECR_REPO_URI:$IMAGE_TAG
+
+      - name: Update ECS service
+        env:
+          AWS_REGION: ap-south-1
+          CLUSTER_NAME: Cluster
+          SERVICE_NAME: myservice
+          ECR_REPO_URI: 656982906157.dkr.ecr.ap-south-1.amazonaws.com/myrepo
+          IMAGE_TAG: latest
+        run: |
+          aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment --output json
